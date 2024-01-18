@@ -35,6 +35,9 @@ volatile byte err = 0;
 volatile bool hostIOOccured = false;
 volatile bool dskyIOOccured = false;
 
+int QEM [16] = {0,-1,1,0,1,0,0,-1,-1,0,0,1,0,1,-1,0}; // Quadrature Encoder Matrix
+int enc_state[4]={0,0,0,0};
+
 
 enum ascii_bound{
   ascii_null =  ASCII_NULL,
@@ -44,7 +47,6 @@ enum ascii_bound{
   hex = ASCII_F,
   alpha = ASCII_Z
 };
-
 
 byte alphanum_charset[CHARSET_SIZE] = {
   0b00111111,0b010001,    //0
@@ -186,14 +188,14 @@ public:
     _wire->endTransmission();  // stop transmitting
     _wire->requestFrom(address, KEYBYTES, true);
     // client may send less than requested
-    Serial2.println("SWbankUp,X,SWbankDwn,X,Enc1,Enc2");
+    //Serial2.println("SWbankUp,X,SWbankDwn,X,Enc1,Enc2");
     while (_wire->available()) {
       next[j] = _wire->read();  // Receive a byte as character
-      Serial2.print(next[j]);
-      Serial2.print(",");
+     // Serial2.print(next[j]);
+      //Serial2.print(",");
       j++;
     }
-    Serial2.println();
+    //Serial2.println();
     return;
     for (byte i = 0;i<KEYBYTES;++i){
       int delta = next[i]^prior[i] ;
@@ -209,11 +211,13 @@ public:
           prior[i]= next[i];
       }
     }
+    /*
     for(byte i=0;i<LED_BIT_BUF_SIZE;i++){
       Serial2.print(ledBitBuffer[i],HEX);
       Serial2.print(",");
     }
     Serial2.println();
+    */
   }
 
   void  byte2string(byte val, char* str, byte len) {
@@ -286,6 +290,7 @@ public:
   TwoWire* _wire;
 };
 
+/*
 // these 2 functions will be removed in next revision of board
 byte unhashdata(byte d) {
   byte fivetoone = (d & 0b11111000) >> 2;
@@ -299,10 +304,22 @@ byte hashdata(byte d) {
   byte zero = (d & 0b00000001);
   return (fivetoone | sevensix | zero);
 }
-ISR(INT2_vect) {
-  //problem is that shit stays low cause cause buttons stay pressed
-  dskyIOOccured = true;
+*/
+
+byte encoder_read(){
+  byte pa = PINA;
+  int v;
+  int out;
+  for (byte i=0;i<4;i++){
+    v = 0b00000011 & (pa >>(i*2));
+    out = QEM[enc_state[i] * 4 + v];
+    enc_state[i] = v;
+    Serial2.print(out);
+    Serial2.print(",");
+  }
+  Serial2.println();
 }
+
 ISR(INT3_vect) {
   /*
   Init State:
@@ -435,11 +452,14 @@ void setup() {
   //set up port IO interrup ctrl,
   EIMSK = 0b00000000;          //disable INT3&INT2 before setting its mode
   EICRA = 0b10100000;          //INT3&INT2 triggers on FALLING EDGE
-  EIMSK = 0b00001100;          //enable INT3&INT2
+  EIMSK = 0b00001000;          //enable INT3
   PORTD = PORTD | (0 << PD7);  //force ~IO_addr_comp (pd7) low, enabling wait latching
 
-  //set user ports to output
-  DDRA = 0xFF;
+  // set Port A to input, and enable pull ups
+  DDRA = 0x00;
+  PORTA = 0xFF;
+
+  //set unused user ports to output
   DDRC = 0xFF;
   DDRE = 0xFF;
   DDRF = 0xFF;
@@ -460,10 +480,11 @@ void setup() {
 }
 
 void loop() {
-  
   //read inputs
   char temp[3] ={0}; 
   for (byte i =0;i<=255;i++){
+  encoder_read();
+
   //if(dskyIOOccured){
   dsky->getSwitchStatus();
   dskyIOOccured = false;
@@ -471,8 +492,8 @@ void loop() {
   dsky->byte2string(i, temp, 3);
   dsky->setXDigits(temp, 3, 0);
   dsky->sendFrame();
-    delay(100);
   }
+  
   //if(dsky->risingStateChange||hostIOOccured){
   //  //collect data from ISR region is there is any
   //  dsky->byte2string(indata, temp, 3);

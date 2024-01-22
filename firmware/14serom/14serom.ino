@@ -35,6 +35,7 @@ volatile byte err = 0;
 volatile bool hostIOOccured = false;
 volatile bool dskyIOOccured = false;
 
+//byte QEM [16] = {0,-1,1,2,1,0,2,-1,-1,2,0,1,2,1,-1,0}; // Quadrature Encoder Matrix
 int QEM [16] = {0,-1,1,0,1,0,0,-1,-1,0,0,1,0,1,-1,0}; // Quadrature Encoder Matrix
 int enc_state[4]={0,0,0,0};
 
@@ -290,21 +291,6 @@ public:
   TwoWire* _wire;
 };
 
-/*
-// these 2 functions will be removed in next revision of board
-byte unhashdata(byte d) {
-  byte fivetoone = (d & 0b11111000) >> 2;
-  byte sevensix = (d & 0b00000110) << 5;
-  byte zero = (d & 0b00000001);
-  return (fivetoone | sevensix | zero);
-}
-byte hashdata(byte d) {
-  byte fivetoone = (d & 0b00111110) << 2;
-  byte sevensix = (d & 0b11000000) >> 5;
-  byte zero = (d & 0b00000001);
-  return (fivetoone | sevensix | zero);
-}
-*/
 
 byte encoder_read(){
   byte pa = PINA;

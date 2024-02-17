@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <semphr.h>
+#include <Arduino_FreeRTOS.h>
 #include "avrc2560_core.h"
 
 #define DSKY_LED_RAM_BASE 0x00
@@ -32,11 +33,12 @@ byte sub(byte a,byte b){ return a-b;}
 
 class KnoblyDisplay {
 public:
-  KnoblyDisplay(byte i_address, HardwareSerial* Serialx,TwoWire* theWire = &Wire) {
+  KnoblyDisplay(byte i_address, HardwareSerial* Serialx,TaskHandle_t* taskDrawHandle,TwoWire* theWire = &Wire) {
     address = i_address;
     _wire = theWire;
     _wire->begin();
     _serial= Serialx;
+    _taskDrawHandle = taskDrawHandle;
   }
 
   ~KnoblyDisplay() {
@@ -58,14 +60,8 @@ public:
     {
       _wire->beginTransmission(address);
       _wire->write(0x21); //System Setup Register: Turn on System oscillator
-      _wire->endTransmission();
-      _wire->beginTransmission(address);
       _wire->write(0x81); //Display Setup Register: Turn on display, no blinking
-      _wire->endTransmission();
-      _wire->beginTransmission(address);
       _wire->write(0xA1); //ROW/INT Set Register : int enable, active low'
-      _wire->endTransmission();
-      _wire->beginTransmission(address);
       _wire->write(0b11100000); //dimming command: min 16 lvls between min and max
       //_wire->write(0b11101111); //dimming command: Max
       _wire->endTransmission();
@@ -156,7 +152,7 @@ public:
     switch(len){
       case 2:
       devisor = 0x10;
-      break; 
+      break;
       case 3:
       devisor = 10;
       break;
@@ -208,16 +204,25 @@ public:
     byte pa = PINA;
     int v;
     int out;
-    _serial->print("ENC R:");
     for (byte i=0;i<4;i++){
       v = 0b00000011 & (pa >>(i*2));
-      out = QEM[enc_state[i] * 4 + v];
-      enc_state[i] = v;
-      _serial->print(out);
-      _serial->print(",");
-
+      out = QEM[enc_state[i] * 4 + v]; //out holds in the +-1 value of rotation
+      enc_state[i] = v ;
+      switch(out){
+        case 0:
+          break;
+        case 1:     
+          inc_decDigit(i+2, hex,&add);
+              xTaskNotifyGive(*_taskDrawHandle);
+          break;
+        case -1:
+          inc_decDigit(i+2, hex,&sub);
+              xTaskNotifyGive(*_taskDrawHandle);
+          break;
+        default:
+          break;
+      }
     }
-    _serial->println();
   }
 
   //void setSwitchStatusLed(byte switchId, int status){
@@ -233,7 +238,6 @@ public:
   byte* prior = switchBufferB;
   byte digitsDisplayState[6] = { 0 };  //store the ascii value of 14 seg display elements
   byte ledBitBuffer[LED_BIT_BUF_SIZE] = { 0 }; //byte strings for display, first 12 bytes store 14segment display bits, last 4 store LEDs
-  //byte QEM [16] = {0,-1,1,2,1,0,2,-1,-1,2,0,1,2,1,-1,0}; // Quadrature Encoder Matrix
   int QEM [16] = {0,-1,1,0,1,0,0,-1,-1,0,0,1,0,1,-1,0}; // Quadrature Encoder Matrix
   int enc_state[4]={0,0,0,0};
   byte address;
@@ -241,6 +245,7 @@ public:
   SemaphoreHandle_t xwire_guard = xSemaphoreCreateMutex();
   TwoWire* _wire;
   Stream* _serial;
+  TaskHandle_t* _taskDrawHandle;
 
 private:
 

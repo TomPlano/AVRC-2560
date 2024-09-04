@@ -1,3 +1,4 @@
 (sym_lib_table
   (lib (name "rc2014_ebus-cpu")(type "KiCad")(uri "E:/rc2014/rc-duino/rc2014_ebus-cpu.kicad_sym")(options "")(descr ""))
+  (lib (name "RCBus")(type "KiCad")(uri "${KIPRJMOD}/RCBus.kicad_sym")(options "")(descr ""))
 )

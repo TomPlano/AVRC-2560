@@ -95,6 +95,11 @@ byte alphanum_charset[CHARSET_SIZE] = {
   0b1001,0b10001,         //Z
 };
 
+ISR(PCINT1_vect){
+encoder_read();
+}
+
+
 byte add(byte a,byte b){ return a+b;}
 byte sub(byte a,byte b){ return a-b;}
 
@@ -153,6 +158,8 @@ public:
     _wire->endTransmission();
     _wire->beginTransmission(address);
     _wire->write(0xA1); //ROW/INT Set Register : int enable, active low
+    //_wire->write(0xA3); //ROW/INT Set Register : int enable, active high
+
     _wire->endTransmission();
     _wire->beginTransmission(address);
     _wire->write(0b11100000); //dimming command: min 16 lvls between min and max
@@ -189,11 +196,11 @@ public:
     _wire->endTransmission();  // stop transmitting
     _wire->requestFrom(address, KEYBYTES, true);
     // client may send less than requested
-    //Serial2.println("SWbankUp,X,SWbankDwn,X,Enc1,Enc2");
+    Serial2.println("SWbankUp,X,SWbankDwn,X,Enc1,Enc2");
     while (_wire->available()) {
       next[j] = _wire->read();  // Receive a byte as character
-     // Serial2.print(next[j]);
-      //Serial2.print(",");
+      Serial2.print(next[j]);
+      Serial2.print(",");
       j++;
     }
     //Serial2.println();
@@ -293,6 +300,10 @@ public:
 
 
 byte encoder_read(){
+      Serial2.println("knob turned:");
+    Serial2.println(PCMSK1,BIN);
+
+    return 0;
   byte pa = PINA;
   int v;
   int out;
@@ -432,14 +443,13 @@ void setup() {
   ioaddrSet(0b11001000);  //203
 
   Serial2.begin(9600);    // Start serial2 for output
-  delay(1000);
   dsky = new DSKY(0x70);  // Create DSKY display object
   dsky->init();           // Init display
   //set up port IO interrup ctrl,
-  EIMSK = 0b00000000;          //disable INT3&INT2 before setting its mode
-  EICRA = 0b10100000;          //INT3&INT2 triggers on FALLING EDGE
-  EIMSK = 0b00001000;          //enable INT3
-  PORTD = PORTD | (0 << PD7);  //force ~IO_addr_comp (pd7) low, enabling wait latching
+  //EIMSK = 0b00000000;          //disable INT3&INT2 before setting its mode
+  //EICRA = 0b10100000;          //INT3&INT2 triggers on FALLING EDGE
+  //EIMSK = 0b00001000;          //enable INT3
+  //PORTD = PORTD | (0 << PD7);  //force ~IO_addr_comp (pd7) low, enabling wait latching
 
   // set Port A to input, and enable pull ups
   DDRA = 0x00;
@@ -455,6 +465,10 @@ void setup() {
   PORTE = 0xFF;
   PORTF = 0xFF;
   PORTG = PORTG | 0b00001111;
+     DDRJ = 0x00;
+     PORTJ = 0x00;
+       PCICR = 0b00000010;
+     PCMSK1 = 0xFF;
 /*
   xTaskCreate(RefreshDSKY, // Task function
               "Refresh", // Task name
@@ -467,13 +481,14 @@ void setup() {
 
 void loop() {
   //read inputs
+  dsky->getSwitchStatus();
   char temp[3] ={0}; 
   for (byte i =0;i<=255;i++){
-  encoder_read();
+  //encoder_read();
 
   //if(dskyIOOccured){
   dsky->getSwitchStatus();
-  dskyIOOccured = false;
+  //dskyIOOccured = false;
   //}
   dsky->byte2string(i, temp, 3);
   dsky->setXDigits(temp, 3, 0);

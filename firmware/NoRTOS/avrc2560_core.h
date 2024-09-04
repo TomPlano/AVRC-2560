@@ -152,7 +152,7 @@
 //PB =  WR,MREQ,INT,CLK,prog_miso,prog_mosi,prog_sck,m1
 #define PORTB_DEFAULT 0x00
 //PD = ~IO_addr_comp, ~IORQ, port_sr_clk,port_sr_data, ~portIOReq, ~i2c int,SDA,SCL
-#define PORTD_DEFAULT 0x04
+#define PORTD_DEFAULT 0x00
 //PH = RD,NMI,~WAIT,BusRQ,HALT,BusAck,uart2_tx,uart2_rx
 #define PORTH_DEFAULT 0x00
 
@@ -296,7 +296,6 @@ void enableRCbusinterrupt(){
     //set up port IO interrup ctrl,
   EIMSK = 0b00000000;          //disable INT3&INT2 before setting its mode
   EICRA = 0b10000000;          //INT3 triggers on FALLING EDGE (poit IO request)
-                                //INT2 triggers on LOW  (I2C int)
   EIMSK = 0b00001100;          //enable INT3 and 2
   IO_ADDR_COMP_LO;  //force ~IO_addr_comp (pd7) low, enabling wait latching
 }

@@ -4,8 +4,6 @@
 #include "avrc2560_core.h"
 #include "knobly_display.h"
 
-#define KEYINT 1
-#define KNOBINT 3
 
 //Global objects
 KnoblyDisplay* dsp_ptr;
@@ -15,9 +13,11 @@ byte knobint;
 void setup() {
   Serial2.begin(9600);
   interupt = 0;
+  
 
-  initRCBus();
+  initRCBus(false);
   initUserPorts();
+  //allHighZ();
   dsp_ptr = new KnoblyDisplay(0x70,&Serial2);
   dsp_ptr->init();
   enableRCbusinterrupt();
@@ -26,18 +26,16 @@ void setup() {
 }
 
 ISR(INT2_vect) {
-  EIMSK ^= 0b00000100; 
+  DISABLE_SWITCHES_INT;
   interupt =1;
   keyint =1;
 }
 
-ISR(PCINT1_vect){
-  PCICR ^= 0b00000010;
+ISR(PCINT2_vect){
+  DISABLE_ENC_INTS;
   interupt =1;
   knobint =1;
 }
-
-  
 
 
 void loop() {
@@ -49,7 +47,7 @@ void loop() {
 
 void TaskInput()
 {
-  //Serial2.println("switch input");
+  Serial2.println("switch input");
   dsp_ptr->getSwitchStatus();
   dsp_ptr->sendFrame();
 }
@@ -71,8 +69,8 @@ void serve_interrupt(){
     TaskEncRead();
     knobint = 0;
   } 
-    interupt =0;
-    EIMSK |= 0b00000100;
-    PCICR |= 0b00000010;
+    interupt = 0;
+    ENABLE_SWITCHES_INT;
+    ENABLE_ENC_INTS;
 
 }

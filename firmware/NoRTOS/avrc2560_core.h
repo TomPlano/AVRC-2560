@@ -8,6 +8,15 @@
 #include <avr/interrupt.h>
 #include <avr/io.h>
 
+
+#define INT_DISABLE 0
+#define INT_ENABLE 0
+
+#define PCINT_DISABLE 0
+#define PCINT_ENABLE 0
+
+
+
 /**
  * Address Bus (A/C)
  */
@@ -91,11 +100,11 @@
 #define IO_ADDR_COMP_HI PIND |= IO_ADDR_COMP
 #define IO_ADDR_COMP_LO PIND &= ~IO_ADDR_COMP
 
-#define PORT_SR_DATA_HI PORTH |= PORT_SR_DATA
-#define PORT_SR_DATA_LO PORTH &= ~PORT_SR_DATA
+#define PORT_SR_DATA_HI PORTD |= PORT_SR_DATA
+#define PORT_SR_DATA_LO PORTD &= ~PORT_SR_DATA
 
-#define PORT_SR_CLK_HI PORTH |= PORT_SR_CLK
-#define PORT_SR_CLK_LO PORTH &= ~PORT_SR_CLK
+#define PORT_SR_CLK_HI PORTD |= PORT_SR_CLK
+#define PORT_SR_CLK_LO PORTD &= ~PORT_SR_CLK
 #define PORT_SR_CLK_TOG (PORT_SR_CLK_HI, PORT_SR_CLK_LO)
 
 /**
@@ -150,11 +159,11 @@
  * Pullup defaults
  */
 //PB =  WR,MREQ,INT,CLK,prog_miso,prog_mosi,prog_sck,m1
-#define PORTB_DEFAULT 0x00
+#define PORTB_DEFAULT 0x0
 //PD = ~IO_addr_comp, ~IORQ, port_sr_clk,port_sr_data, ~portIOReq, ~i2c int,SDA,SCL
 #define PORTD_DEFAULT 0x00
 //PH = RD,NMI,~WAIT,BusRQ,HALT,BusAck,uart2_tx,uart2_rx
-#define PORTH_DEFAULT 0x00
+#define PORTH_DEFAULT 0x0
 
 
 
@@ -164,6 +173,19 @@ volatile byte indata = 0; //data recived from host
 volatile byte outData = 0; // data staged from sending to host 
 volatile byte err = 0;
 volatile bool hostIOOccured = false;
+
+
+#define RCBUS_BUFFER_SIZE 64
+
+volatile byte rcbus_output_buffer[RCBUS_BUFFER_SIZE] = {0};
+volatile byte rcbus_input_buffer[RCBUS_BUFFER_SIZE] = {0};
+
+volatile byte rcbus_input_head = 0;
+volatile byte rcbus_input_tail = 0;
+
+volatile byte rcbus_output_head = 0;
+volatile byte rcbus_output_tail = 0;
+
 
 ISR(INT3_vect) {
   /*
@@ -198,12 +220,17 @@ ISR(INT3_vect) {
 
   if (_WRPin != WR && _RDPin == RD) {
     /*
-      if write:
+      if z80 write to module:
         1. avr data pins default to input/high Z and collects value
         2. avr tristate decoding logic by brining ~{IO_add_comp} low, wait goes high from pullup on cpu card, latch is set high on next clk pluse
       */
     //read data bus
-    indata = GET_DATA;
+    //indata = GET_DATA;
+    // write the byte recieved from z80 into the input buffer of the module
+    rcbus_input_buffer[rcbus_input_head]  = GET_DATA;
+    // bump along rcbus_input_head around circular buffer 
+    rcbus_input_head = ((++rcbus_input_head) % RCBUS_BUFFER_SIZE);
+    
     // inline asm to make to compiler and timing behave
     asm("sbi %0, %1 \n"
         "nop\n"
@@ -221,7 +248,7 @@ ISR(INT3_vect) {
     return;
   } else if (_RDPin != RD && _WRPin == WR) {
     /*
-      if read:
+      if z80 read from module:
         4. avr sets databus to output , and output low, then  sets value
         5. avr then asserts the busreq line to essentially stall the cpu in tristate after the databus has been read
         6. avr tristate decoding logic by brining ~{IO_add_comp} high , wait goes high from pullup on cpu card, latch is set high on next clk pluse
@@ -238,7 +265,13 @@ ISR(INT3_vect) {
     //clear databus
     SET_DATA(0x00);
     //output true data
-    SET_DATA(outData);
+    //SET_DATA(outData);
+    
+    //output true data
+    SET_DATA(rcbus_output_buffer[rcbus_output_tail]);
+    //bump along rcbus_output_tail around circular buffer  
+    rcbus_output_tail = ((++rcbus_output_tail) % RCBUS_BUFFER_SIZE);
+    
     //set busreq to output
     BUSRQ_MODE_OUT;
 
@@ -283,13 +316,19 @@ void ioaddrSet(byte addr) {
   PORT_SR_CLK_TOG;
 }
 
-void initRCBus(){
+void initRCBus(bool installed){
   DATA_TSTATE;
   ADDR_TSTATE;
-  DDRB = DDRB_DEFAULT;
-  DDRD = DDRD_DEFAULT;
-  DDRH = DDRH_DEFAULT;
-  ioaddrSet(0b11001000);  //203
+    //Board is installed in the system
+    DDRB = DDRB_DEFAULT;
+    DDRD = DDRD_DEFAULT;
+    DDRH = DDRH_DEFAULT;
+    
+    PORTB = PORTB_DEFAULT;
+    PORTD = PORTD_DEFAULT;
+    PORTH = PORTH_DEFAULT;
+  ioaddrSet(0xFF);  //203
+  
 }
 
 void enableRCbusinterrupt(){
@@ -298,20 +337,48 @@ void enableRCbusinterrupt(){
   EICRA = 0b10000000;          //INT3 triggers on FALLING EDGE (poit IO request)
   EIMSK = 0b00001100;          //enable INT3 and 2
   IO_ADDR_COMP_LO;  //force ~IO_addr_comp (pd7) low, enabling wait latching
+
 }
 
 void initUserPorts(){
-  //set unused user ports to output
-  DDRE = 0xFF;
-  DDRF = 0xFF;
-  DDRG = 0xFF;
-  DDRJ = 0xFF;
-  DDRK = 0xFF;
+  //set unused user ports to highz
+  DDRE = 0;
+  DDRF = 0;
+  DDRG = 0;
+  DDRJ = 0;
+  DDRK = 0;
   PORTE = 0xFF;
   PORTF = 0xFF;
   PORTG = 0xFF;
   PORTJ = 0xFF;
   PORTK = 0xFF;
+}
+void allHighZ(){
+  DDRA = 0;
+  DDRB = 0;
+  DDRC = 0;
+  DDRD = 0;
+  DDRE = 0;
+  DDRF = 0;
+  DDRG = 0;
+  DDRH = 0;
+  DDRJ = 0;
+  DDRK = 0;
+  DDRL = 0;
+
+
+  PORTA = 0xFF;
+  PORTB = 0xFF;
+  PORTC = 0xFF;
+  PORTD = 0xFF;
+  PORTE = 0xFF;
+  PORTF = 0xFF;
+  PORTG = 0xFF;
+  PORTH = 0xFF;
+  PORTJ = 0xFF;
+  PORTK = 0xFF;
+  PORTL = 0xFF;
+  
 }
 
 #endif /*ACRV2560CORE_H*/

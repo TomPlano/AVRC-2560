@@ -1,8 +1,21 @@
 #include <Wire.h>
 #include "avrc2560_core.h"
 
+#define DSP_SWITCHES_INT 2
+#define ENC_PC_PORT 2
+
+
+#define ENABLE_SWITCHES_INT (EIMSK |= (1<<DSP_SWITCHES_INT))
+#define ENABLE_ENC_INTS (PCICR |= (1<<ENC_PC_PORT))
+
+#define DISABLE_SWITCHES_INT (EIMSK &= ~(1<<DSP_SWITCHES_INT))
+#define DISABLE_ENC_INTS (PCICR &= ~(1<<ENC_PC_PORT))
+
 #define DSKY_LED_RAM_BASE 0x00
 #define DSKY_KEY_RAM_BASE 0x40
+
+#define INTERFACE_BUFFER_SIZE 64
+
 #define KEYBYTES 6  //must be 6 to read all keys and clear int bit
 #define CHARSET_SIZE 86
 
@@ -79,9 +92,9 @@ public:
      PORTJ = 0x00;
      DDRK = 0x00;
      PORTK = 0x00;
-     //enable pinchange interupt on all of portK (PC8:15)
-     PCICR = 0b00000010;
-     PCMSK1 = 0b11111111;
+     //enable pinchange interupt on all of portj (PC8:15)
+     PCICR = 0b00000100;
+     PCMSK2 = 0xFF;
      
     //init device
     delay(20);  //delay at least one "frame time" for key switches to stablize
@@ -176,9 +189,9 @@ public:
 
    //extract knob keys
    byte e = reverse(*encoderbtns);
-     _serial->print("shifted encoders:");
+     _serial->print("encoder btn:");
      _serial->println(e);
-    ledBitBuffer[GREEN_FLAGS] ^= layoutBugFix(e);
+    ledBitBuffer[GREEN_FLAGS] = layoutBugFix(e);
 
 
 
@@ -187,6 +200,7 @@ public:
     if(*enter){
       ledBitBuffer[LED_STAT_BASE+DOWNBNK_BASE] = 0;
       ledBitBuffer[LED_STAT_BASE+UPBNK_BASE] = 0;
+      ledBitBuffer[GREEN_FLAGS] = 0;
     }
     return 1; 
   }
@@ -248,9 +262,8 @@ public:
   byte encoder_read(){
     _serial->println("knob turned:");
     _serial->println(PINK,BIN);
-    
-    return 0;
-    byte pa = PINA;
+    *enter = PINK;
+    byte pa = PINK;
     int v;
     int out;
     for (byte i=0;i<4;i++){
@@ -270,7 +283,30 @@ public:
           break;
       }
     }
+        return 0;
+
   }
+
+
+  void rxFromModule(){
+    //called from module code
+    //deposit data in the input buffer
+    //set "new data flag"
+  }
+
+  void txToModule(){
+    //called from display code
+    
+  }
+
+
+  byte kd_output_buffer[INTERFACE_BUFFER_SIZE] = {0};
+  byte kd_input_buffer[INTERFACE_BUFFER_SIZE] = {0};
+  byte* kd_input_read_ptr = kd_input_buffer;
+  byte* kd_input_write_ptr = kd_input_buffer;
+
+  byte* kd_output_read_ptr = kd_output_buffer;
+  byte* kd_output_write_ptr = kd_output_buffer;
 
   byte switchBufferA[KEYBYTES] = { 0 };
   byte switchBufferB[KEYBYTES] = { 0 };
@@ -280,7 +316,6 @@ public:
   byte* upbank = next+UPBNK_BASE;
   byte* enter = next+ENTERKEY_BASE;
   byte* encoderbtns = next+ENCODERKEYS_BASE;
-  byte switch_timeout = 0;
   byte digitsDisplayState[6] = { 0 };  //store the ascii value of 14 seg display elements
   byte ledBitBuffer[LED_BIT_BUF_SIZE] = { 0 }; //byte strings for display, first 12 bytes store 14segment display bits, last 4 store LEDs
   int QEM [16] = {0,-1,1,0,1,0,0,-1,-1,0,0,1,0,1,-1,0}; // Quadrature Encoder Matrix

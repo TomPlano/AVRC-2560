@@ -21,8 +21,6 @@ void setup() {
   dsp_ptr = new KnoblyDisplay(0x70,&Serial2);
   dsp_ptr->init();
   enableRCbusinterrupt();
-
-
 }
 
 ISR(INT2_vect) {
@@ -37,11 +35,20 @@ ISR(PCINT2_vect){
   knobint =1;
 }
 
-
+int x =0;
+byte d = 0;
 void loop() {
   if(interupt){
     serve_interrupt();
   }  
+  //display test 
+  /*if(x==0){
+     dsp_ptr->digits[d]->togglePower();
+     d = (d+1)%6;
+     dsp_ptr->sendFrame();  
+  }
+  x++;
+  */  
 }
 
 
